@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Transaction List & Charts</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; }
+    .container { width: 80%; margin: 0 auto; padding-top: 50px; }
+    .month-dropdown, .search-box { margin: 20px 0; }
+    .transaction-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    .transaction-table th, .transaction-table td { padding: 10px; border: 1px solid #ddd; }
+    .pagination { margin-top: 20px; }
+    .pagination button { padding: 10px; background-color: #4CAF50; color: white; border: none; cursor: pointer; }
+    .pagination button:hover { background-color: #45a049; }
+    .charts { display: flex; justify-content: space-between; margin-top: 50px; }
+    .chart-container { width: 45%; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <select class="month-dropdown" id="monthSelector">
+  
+    <option value="January">January</option>
+    <option value="February">February</option>
+    <option value="March" selected>March</option>
+    <option value="April" selected>April</option>
+    <option value="May" selected>May</option>
+    <option value="June" selected>June</option>
+    <option value="July" selected>July</option>
+    <option value="August" selected>August</option>
+    <option value="September" selected>September</option>
+    <option value="October" selected>October</option>
+    <option value="November" selected>November</option>
+    <option value="December" selected>December</option>
+  
+  </select>
+  <input type="text" id="searchBox" class="search-box" placeholder="Search transactions...">
+  <button onclick="clearSearch()">Clear Search</button>
+
+  <table class="transaction-table">
+    <thead>
+      <tr>
+        <th>Product Title</th>
+        <th>Description</th>
+        <th>Price</th>
+        <th>Date of Sale</th>
+        <th>Is Sold?</th>
+      </tr>
+    </thead>
+    <tbody id="transactionTableBody"></tbody>
+  </table>
+
+  <div class="pagination">
+    <button id="prevPageBtn" onclick="loadPage('prev')">Previous</button>
+    <button id="nextPageBtn" onclick="loadPage('next')">Next</button>
+  </div>
+
+
+  <div class="charts">
+    <div class="chart-container">
+      <canvas id="barChart"></canvas>
+    </div>
+    <div class="chart-container">
+      <canvas id="lineChart"></canvas>
+    </div>
+  </div>
+
+  <div class="statistics-box">
+    <p id="totalAmount">Total Sales Amount: ₹0</p>
+    <p id="totalSoldItems">Total Sold Items: 0</p>
+    <p id="totalNotSoldItems">Total Not Sold Items: 0</p>
+  </div>
+</div>
+
+<script>
+let currentPage = 1;
+let totalPages = 1;
+const rowsPerPage = 4;
+const API_BASE_URL = "https://example.com/api/transactions"; 
+let barChart, lineChart;
+
+async function fetchTransactionStatistics(month) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/stats?month=${month}`);
+    const data = await response.json();
+
+    document.getElementById("totalAmount").textContent = `Total Sales Amount: ₹${data.totalAmount}`;
+    document.getElementById("totalSoldItems").textContent = `Total Sold Items: ${data.totalSoldItems}`;
+    document.getElementById("totalNotSoldItems").textContent = `Total Not Sold Items: ${data.totalNotSoldItems}`;
+
+    updateCharts(data);
+  } catch (error) {
+    console.error('Error fetching transaction statistics:', error);
+  }
+}
+
+async function fetchTransactions(month, searchQuery = '', page = 1) {
+  try {
+    const response = await fetch(`${API_BASE_URL}?search=${searchQuery}&month=${month}&page=${page}&limit=${rowsPerPage}`);
+    const data = await response.json();
+    totalPages = data.totalPages;
+
+    const tableBody = document.getElementById("transactionTableBody");
+    tableBody.innerHTML = '';
+    data.transactions.forEach(transaction => {
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td>${transaction.productTitle}</td>
+        <td>${transaction.description}</td>
+        <td>${transaction.price}</td>
+        <td>${new Date(transaction.dateOfSale).toLocaleDateString()}</td>
+        <td>${transaction.isSold ? 'Yes' : 'No'}</td>
+      `;
+      tableBody.appendChild(row);
+    });
+
+    document.getElementById("prevPageBtn").disabled = currentPage === 1;
+    document.getElementById("nextPageBtn").disabled = currentPage === totalPages;
+  } catch (error) {
+    console.error('Error fetching transactions:', error);
+  }
+}
+
+function updateCharts(data) {
+  const labels = data.monthlySales.map(item => item.month);
+  const soldData = data.monthlySales.map(item => item.sold);
+  const notSoldData = data.monthlySales.map(item => item.notSold);
+  const totalSalesData = data.monthlySales.map(item => item.totalAmount);
+
+ 
+  if (barChart) {
+    barChart.data.labels = labels;
+    barChart.data.datasets[0].data = soldData;
+    barChart.data.datasets[1].data = notSoldData;
+    barChart.update();
+  } else {
+    const barCtx = document.getElementById("barChart").getContext("2d");
+    barChart = new Chart(barCtx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [
+          { label: 'Sold Items', data: soldData, backgroundColor: 'rgba(54, 162, 235, 0.6)' },
+          { label: 'Not Sold Items', data: notSoldData, backgroundColor: 'rgba(255, 99, 132, 0.6)' }
+        ]
+      }
+    });
+  }
+
+
+  if (lineChart) {
+    lineChart.data.labels = labels;
+    lineChart.data.datasets[0].data = totalSalesData;
+    lineChart.update();
+  } else {
+    const lineCtx = document.getElementById("lineChart").getContext("2d");
+    lineChart = new Chart(lineCtx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{ label: 'Total Sales Amount', data: totalSalesData, borderColor: 'rgba(75, 192, 192, 1)', fill: false }]
+      }
+    });
+  }
+}
+
+async function loadData() {
+  const selectedMonth = document.getElementById("monthSelector").value;
+  await fetchTransactions(selectedMonth, '', currentPage);
+  await fetchTransactionStatistics(selectedMonth);
+}
+
+document.getElementById("monthSelector").addEventListener('change', loadData);
+document.getElementById("searchBox").addEventListener('input', async () => {
+  const selectedMonth = document.getElementById("monthSelector").value;
+  const searchQuery = document.getElementById("searchBox").value;
+  await fetchTransactions(selectedMonth, searchQuery, currentPage);
+});
+
+function clearSearch() {
+  document.getElementById("searchBox").value = '';
+  loadData();
+}
+
+async function loadPage(direction) {
+  if (direction === 'next' && currentPage < totalPages) {
+    currentPage++;
+  } else if (direction === 'prev' && currentPage > 1) {
+    currentPage--;
+  }
+  loadData();
+}
+
+loadData();
+
+</script>
+
+</body>
+</html>
